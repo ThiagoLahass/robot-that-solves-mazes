@@ -1,7 +1,7 @@
 # robot-that-solves-mazes
 Apply concepts acquired throughout the course such as pulse width modulation (PWM) for controlling DC motors and servomotors, analog-to-digital conversion (ADC) for data collection signals from analog sensors, port control (GPIO, General Purpose Input/Output), Timers, LCD, among others.
 
-![Robotic 1](https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/main/images/robotic1.jpeg)
-
-
-![Robotic 2](https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/main/images/robotic2.jpeg)
+<p float="left">
+  <img src="https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/bd134505da17be8866e695be7ffaac8328ec2ef7/images/robotic1.jpeg" width="100" />
+  <img src="https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/b2964947acf20478596f60ea1d3436659ea97d3c/images/robotic2.jpeg" width="100" />
+</p>
