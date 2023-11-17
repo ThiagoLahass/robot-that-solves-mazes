@@ -3,5 +3,5 @@ Apply concepts acquired throughout the course such as pulse width modulation (PW
 
 <div style="display: flex; justify-content: space-between;">
   <img src="https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/bd134505da17be8866e695be7ffaac8328ec2ef7/images/robotic1.jpeg" style="width: 48%; object-fit: cover;" />
-  <img src="https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/b2964947acf20478596f60ea1d3436659ea97d3c/images/robotic2.jpeg" style="width: 48%; height: 150%; object-fit: cover;" />
+  <img src="https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/b2964947acf20478596f60ea1d3436659ea97d3c/images/robotic2.jpeg" style="width: 48%; height: 300%; object-fit: cover;" />
 </div>
