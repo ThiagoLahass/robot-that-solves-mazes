@@ -1,6 +1,47 @@
 #define HIGH 1
 #define LOW  0
 
+//=========== NOMEANDO AS PORTAS ============
+//#define   VCC_3_3     1;
+//#define   EN          2;
+#define     SLC         3;
+#define     SR          4;
+#define     SC          5;
+#define     SL          6;
+#define     SRC         7;
+#define     E_CH1       8;
+#define     CHA_M1      9;
+#define     E_CH2       10;
+#define     CHA_M2      11;
+#define     BUZZER      12;
+#define     BL_LCD      13;
+//#define   GND         14;
+#define     SERVO       15;
+// #define  SD2         16;
+// #define  SD3         17;
+// #define  CMD         18;
+// #define  VCC_5       19;
+// #define  CLK         20;
+// #define  SD0         21;
+// #define  SD1         22;
+#define     DB4         23;
+#define     DB5         24;
+#define     DB6         25;
+#define     DB7         26;
+#define     EN_TRIG     27;
+#define     RS          28;
+#define     CS_SENSORS  29;
+#define     CLK         30;
+#define     MISO_ECHO   31;
+// #define  GND         32;
+#define     SDA_MPU     33;
+#define     RX0         34;
+#define     TX0         35;
+#define     SCL_MPU     36;
+#define     MOSI        37;
+// #define  GND         38;
+
+
 
 // The set_motors() function in the Pololu AVR Library (see Section 6 for more information) lets you
 // set the duty cycle, and it uses 8-bit precision: a value of 255 corresponds to 100% duty cycle. For
