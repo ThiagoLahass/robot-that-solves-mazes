@@ -1,45 +1,45 @@
 #define HIGH 1
 #define LOW  0
 
-//=========== NOMEANDO AS PORTAS ============
-//#define   VCC_3_3     1;
-//#define   EN          2;
-#define     SLC         3;
-#define     SR          4;
-#define     SC          5;
-#define     SL          6;
-#define     SRC         7;
-#define     E_CH1       8;
-#define     CHA_M1      9;
-#define     E_CH2       10;
-#define     CHA_M2      11;
-#define     BUZZER      12;
-#define     BL_LCD      13;
-//#define   GND         14;
-#define     SERVO       15;
-//#define   SD2         16;
-//#define   SD3         17;
-//#define   CMD         18;
-//#define   VCC_5       19;
-//#define   CLK         20;
-//#define   SD0         21;
-//#define   SD1         22;
-#define     DB4         23;
-#define     DB5         24;
-#define     DB6         25;
-#define     DB7         26;
-#define     EN_TRIG     27;
-#define     RS          28;
-#define     CS_SENSORS  29;
-#define     CLK         30;
-#define     MISO_ECHO   31;
-//#define   GND         32;
-#define     SDA_MPU     33;
-#define     RX0         34;
-#define     TX0         35;
-#define     SCL_MPU     36;
-#define     MOSI        37;
-//#define   GND         38;
+//=== NOMEANDO AS PORTAS ===
+//#define   VCC_3_3     1
+//#define   EN          2
+#define     SLC         3
+#define     SR          4
+#define     SC          5
+#define     SL          6
+#define     SRC         7
+#define     E_CH1       8
+#define     CHA_M1      9
+#define     E_CH2       10
+#define     CHA_M2      11
+#define     BUZZER      12
+#define     BL_LCD      13
+//#define   GND         14
+#define     SERVO       15
+//#define   SD2         16
+//#define   SD3         17
+//#define   CMD         18
+//#define   VCC_5       19
+//#define   CLK         20
+//#define   SD0         21
+//#define   SD1         22
+#define     DB4         23
+#define     DB5         24
+#define     DB6         25
+#define     DB7         26
+#define     EN_TRIG     27
+#define     RS          28
+#define     CS_SENSORS  29
+#define     CLK         30
+#define     MISO_ECHO   31
+//#define   GND         32
+#define     SDA_MPU     33
+#define     RX0         34
+#define     TX0         35
+#define     SCL_MPU     36
+#define     MOSI        37
+//#define   GND         38
 
 
 
@@ -95,29 +95,25 @@ void display_path();
 
 
 
-const int trigPin = 9;  // Pino de controle do trigger
-const int echoPin = 10; // Pino de leitura do echo
 const int TAMANHO_MEDIA_MOVEL = 5;
 float buffer[TAMANHO_MEDIA_MOVEL] = {0};
 
-void setup(){
+void setup() {
     Serial.begin(9600);
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, INPUT);
+    pinMode(EN_TRIG, OUTPUT);
+    pinMode(MISO_ECHO, INPUT);
 }
     
 void loop() {
 
 
-
+    //============ LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ==============
     // Leitura do sensor ultrassônico
-    float leitura = lerSensorUltrasonico();
-
     // Atualização do buffer para média móvel
     for (int i = TAMANHO_MEDIA_MOVEL - 1; i > 0; --i) {
       buffer[i] = buffer[i - 1];
     }
-    buffer[0] = leitura;
+    buffer[0] = lerSensorUltrasonico();
 
     // Cálculo da média móvel
     float media = mediaMovel(buffer, TAMANHO_MEDIA_MOVEL);
@@ -126,10 +122,10 @@ void loop() {
     Serial.print("Distancia: ");
     Serial.println(media);
 
-    delay(250);  // Aguarda 1 segundo entre as leituras
+    // TO-DO: TIRAR ESSE DELAY
+    delay(250);
 
-
-
+    //========== FIM LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ============
 
 
     while(1) {
@@ -224,6 +220,7 @@ void loop() {
 }
 
 
+
 // Função para calcular a média móvel
 float mediaMovel(float *buffer, int tamanho) {
     float soma = 0.0;
@@ -236,20 +233,22 @@ float mediaMovel(float *buffer, int tamanho) {
 // Função para obter a leitura do sensor ultrassônico
 float lerSensorUltrasonico() {
     // Envie um pulso curto para o pino Trig para ativar a medição
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
+    digitalWrite(EN_TRIG, LOW);
+    delayMicroseconds(1);
+    digitalWrite(EN_TRIG, HIGH);
+    delayMicroseconds(1);
+    digitalWrite(EN_TRIG, LOW);
 
     // Meça a duração do pulso no pino Echo
-    float duration = pulseIn(echoPin, HIGH);
+    float duration = pulseIn(MISO_ECHO, HIGH);
 
     // Converta a duração em distância (considerando velocidade do som ~343m/s)
     float distance = duration * 0.0343 / 2;
 
     return distance;
 }
+
+
 
 // FOLLOWING A SEGMENT USING PID CONTROL
 void follow_segment() {
