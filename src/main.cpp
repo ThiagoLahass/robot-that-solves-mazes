@@ -1,5 +1,9 @@
+#include <Servo.h>
+
 #define HIGH 1
 #define LOW  0
+
+#define NUM_SENSORS 5
 
 //=== NOMEANDO AS PORTAS ===
 //#define   VCC_3_3     1
@@ -53,7 +57,9 @@
 // a loop that gradually decreases the motor speed over time.
 
 
-unsigned int sensors[5]; // an array to hold sensor values
+unsigned int sensors[NUM_SENSORS]       = {0};      // an array to hold sensor values
+unsigned int sensors_max[NUM_SENSORS]   = {1023};   // used to calibrate the initial values of the IR sensors
+unsigned int sensors_min[NUM_SENSORS]   = {0};      // used to calibrate the initial values of the IR sensors
 
 float Kp = 1/20, Ki = 1/10000, Kd = 3/2; // values of the PID constants values
 
@@ -69,7 +75,7 @@ float lerSensorUltrasonico();
 
 void follow_segment();
 
-unsigned int read_line( unsigned int * sensors );
+void read_line();
 
 void turn (char dir);
 
@@ -77,11 +83,17 @@ char select_turn(unsigned char found_left, unsigned char found_straight, unsigne
 
 void simplify_path();
 
-
+// os valores de right_motor e left_motor devem ser os valores de duty-cycles deles
+// exemplos:
+// max velocidade: (100, 100)
+// parado: (50, 50)
+void set_motors(int right_motor, int left_motor);
 
 unsigned int read_battery_millivolts();
 
 void calibrate_line_sensors();
+
+void mapping_sensors_values_to_calibrated_values();
 
 void initialize();
 
@@ -98,10 +110,23 @@ void display_path();
 const int TAMANHO_MEDIA_MOVEL = 5;
 float buffer[TAMANHO_MEDIA_MOVEL] = {0};
 
+int posicao_servo = 0;	
+int direcao_atual = 0;	// 0 indica anti-horario
+const int VEL_SERVO = 15; 
+Servo servo;
+
 void setup() {
     Serial.begin(9600);
     pinMode(EN_TRIG, OUTPUT);
     pinMode(MISO_ECHO, INPUT);
+
+    servo.attach(SERVO, 500, 2500);
+  	// posiciona o servo na posicao central
+    while( posicao_servo < 90 ){
+      posicao_servo += VEL_SERVO;
+      servo.write(posicao_servo);
+      delay(100);
+    }
 }
     
 void loop() {
@@ -122,11 +147,46 @@ void loop() {
     Serial.print("Distancia: ");
     Serial.println(media);
 
-    // TO-DO: TIRAR ESSE DELAY
-    delay(250);
-
     //========== FIM LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ============
 
+
+    //========== UPDATE POSICAO SERVO ==========
+    // anti-horario
+    if( direcao_atual == 0 ){
+      if(posicao_servo >= 180){
+          direcao_atual = 1;
+      }
+      else{
+          posicao_servo += VEL_SERVO; 
+      }
+    }
+    else{ //horario
+      if(posicao_servo <= 0){
+          direcao_atual = 0;
+      }
+      else{
+          posicao_servo -= VEL_SERVO; 
+      }
+    }
+  
+  	servo.write(posicao_servo);
+  
+  	// Impressão da posicao
+    Serial.print("Posicao: ");
+    Serial.println(posicao_servo);
+
+    //========== FIM UPDATE POSICAO SERVO ==========
+
+
+    // read the sensor:
+    read_line();
+    //calibrate the values
+    calibrate_line_sensors();
+
+    // AQUI TEMOS OS VALORES JÁ CALIBRADOS
+
+
+    delay(100);  // Aguarda 0.1 segundo        
 
     while(1) {
         // FIRST MAIN LOOP BODY
@@ -252,8 +312,8 @@ float lerSensorUltrasonico() {
 
 // FOLLOWING A SEGMENT USING PID CONTROL
 void follow_segment() {
-    int last_proportional = 0;
-    long integral=0;
+    int     last_proportional   = 0;
+    long    integral            = 0;
 
     while(1) {
         // Normally, we will be following a line. The code below is
@@ -287,8 +347,8 @@ void follow_segment() {
         if (power_difference > max)     power_difference = max;
         if (power_difference < -max)    power_difference = -max;
 
-        if (power_difference < 0)   set_motors(max + power_difference, max);
-        else                        set_motors(max, max - power_difference);
+        if (power_difference < 0)   set_motors(max + power_difference,  max                     );
+        else                        set_motors(max,                     max - power_difference  );
 
         // We use the inner three sensors (1, 2, and 3) for
         // determining whether there is a line straight ahead, and the
@@ -408,7 +468,81 @@ unsigned int read_battery_millivolts() {
 // under sensor 1, 2000 means that the line is directly under sensor 2, and so on.
 
 // Here is a simplified version of the code that reads the sensors
-unsigned int read_line( unsigned int * sensors ){
+void read_line(){
+    sensors[0] = analogRead(SLC);
+    sensors[1] = analogRead(SL);
+    sensors[2] = analogRead(SC);
+    sensors[3] = analogRead(SR);
+    sensors[4] = analogRead(SRC);
+}
 
+void calibrate_line_sensors(){
+    
+    // calibrate during the robot make a turn
+    // while ( making a turn ) {
+    while (millis() < 5000) {
+        
+        //read the IR sensors
+        read_line();
 
+        // record the maximum sensors[0] value
+        if (sensors[0] > sensors_max[0]) {
+            sensors_max[0] = sensors[0];
+        }
+        // record the minimum sensors[0] value
+        if (sensors[0] < sensors_min[0]) {
+            sensors_min[0] = sensors[0];
+        }
+
+        // record the maximum sensors[1] value
+        if (sensors[1] > sensors_max[1]) {
+            sensors_max[1] = sensors[1];
+        }
+        // record the minimum sensors[1] value
+        if (sensors[1] < sensors_min[1]) {
+            sensors_min[1] = sensors[1];
+        }
+
+        // record the maximum sensors[2] value
+        if (sensors[2] > sensors_max[2]) {
+            sensors_max[2] = sensors[2];
+        }
+        // record the minimum sensors[2] value
+        if (sensors[2] < sensors_min[2]) {
+            sensors_min[2] = sensors[2];
+        }
+
+        // record the maximum sensors[3] value
+        if (sensors[3] > sensors_max[3]) {
+            sensors_max[3] = sensors[3];
+        }
+        // record the minimum sensors[3] value
+        if (sensors[3] < sensors_min[3]) {
+            sensors_min[3] = sensors[3];
+        }
+
+        // record the maximum sensors[4] value
+        if (sensors[4] > sensors_max[4]) {
+            sensors_max[4] = sensors[4];
+        }
+        // record the minimum sensors[4] value
+        if (sensors[4] < sensors_min[4]) {
+            sensors_min[4] = sensors[4];
+        }
+    }
+}
+
+void mapping_sensors_values_to_calibrated_values(){
+    // in case the sensor value is outside the range seen during calibration
+    sensors[0] = constrain(sensors[0], sensors_min[0], sensors_max[0]);
+    sensors[1] = constrain(sensors[1], sensors_min[1], sensors_max[1]);
+    sensors[2] = constrain(sensors[2], sensors_min[2], sensors_max[2]);
+    sensors[3] = constrain(sensors[3], sensors_min[3], sensors_max[3]);
+    sensors[4] = constrain(sensors[4], sensors_min[4], sensors_max[4]);
+    // apply the calibration to the sensor reading
+    sensors[0] = map(sensors[0], sensors_min[0], sensors_max[0], 0, 255);
+    sensors[1] = map(sensors[1], sensors_min[1], sensors_max[1], 0, 255);
+    sensors[2] = map(sensors[2], sensors_min[2], sensors_max[2], 0, 255);
+    sensors[3] = map(sensors[3], sensors_min[3], sensors_max[3], 0, 255);
+    sensors[4] = map(sensors[4], sensors_min[4], sensors_max[4], 0, 255);
 }
