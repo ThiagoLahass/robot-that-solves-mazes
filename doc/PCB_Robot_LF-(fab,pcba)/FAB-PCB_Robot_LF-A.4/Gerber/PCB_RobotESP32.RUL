@@ -1,0 +1,11 @@
+DRC Rules Export File for PCB: C:\Users\Intel\AppData\Local\TempReleases\Snapshot\1\PCB_RobotESP32.CMPcbDoc
+RuleKind=Width|RuleName=VBAT|Scope=Board|Minimum=39.37
+RuleKind=Width|RuleName=VIN_Jack|Scope=Board|Minimum=39.37
+RuleKind=Width|RuleName=VIN_SW_Jack|Scope=Board|Minimum=39.37
+RuleKind=Width|RuleName=3V3|Scope=Board|Minimum=31.50
+RuleKind=Width|RuleName=5VCC|Scope=Board|Minimum=39.37
+RuleKind=Width|RuleName=Nets|Scope=Board|Minimum=17.72
+RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion|Scope=Board|Minimum=4.00
+RuleKind=Width|RuleName=VBOOST|Scope=Board|Minimum=23.62
+RuleKind=Clearance|RuleName=Clearance|Scope=Board|Minimum=10.00
+RuleKind=ShortCircuit|RuleName=ShortCircuit|Scope=Board|Allowed=0
