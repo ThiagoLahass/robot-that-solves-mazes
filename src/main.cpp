@@ -8,19 +8,19 @@
 //=== NOMEANDO AS PORTAS ===
 //#define   VCC_3_3     1
 //#define   EN          2
-#define     SLC         3
-#define     SR          4
-#define     SC          5
-#define     SL          6
-#define     SRC         7
-#define     E_CH1       8
-#define     CHA_M1      9
-#define     E_CH2       10
-#define     CHA_M2      11
-#define     BUZZER      12
-#define     BL_LCD      13
+#define     SLC         36
+#define     SR          39
+#define     SC          34
+#define     SL          35
+#define     SRC         32
+#define     E_CH1       33
+#define     CHA_M1      25
+#define     E_CH2       26
+#define     CHA_M2      27
+#define     BUZZER      14
+#define     BL_LCD      12
 //#define   GND         14
-#define     SERVO       15
+#define     SERVO       13
 //#define   SD2         16
 //#define   SD3         17
 //#define   CMD         18
@@ -28,22 +28,28 @@
 //#define   CLK         20
 //#define   SD0         21
 //#define   SD1         22
-#define     DB4         23
-#define     DB5         24
-#define     DB6         25
-#define     DB7         26
-#define     EN_TRIG     27
-#define     RS          28
-#define     CS_SENSORS  29
-#define     CLK         30
-#define     MISO_ECHO   31
+#define     DB4         15
+#define     DB5         2
+#define     DB6         0
+#define     DB7         4
+#define     EN_TRIG     16
+#define     RS          17
+#define     CS_SENSORS  5
+#define     CLK         18
+#define     MISO_ECHO   19
 //#define   GND         32
-#define     SDA_MPU     33
-#define     RX0         34
-#define     TX0         35
-#define     SCL_MPU     36
-#define     MOSI        37
+#define     SDA_MPU     21
+#define     RX0         3
+#define     TX0         1
+#define     SCL_MPU     22
+#define     MOSI        23
 //#define   GND         38
+//=========================
+
+#define PWM1_Ch    0
+#define PWM2_Ch    1
+#define PWM1_Res   8
+#define PWM1_Freq  1000
 
 
 
@@ -61,7 +67,7 @@ unsigned int sensors[NUM_SENSORS]       = {0};      // an array to hold sensor v
 unsigned int sensors_max[NUM_SENSORS]   = {1023};   // used to calibrate the initial values of the IR sensors
 unsigned int sensors_min[NUM_SENSORS]   = {0};      // used to calibrate the initial values of the IR sensors
 
-float Kp = 1/20, Ki = 1/10000, Kd = 3/2; // values of the PID constants values
+float Kp = 1/20, Ki = 0, Kd = 3/2; // values of the PID constants values
 
 
 char path[100] = "";
@@ -117,166 +123,186 @@ Servo servo;
 
 void setup() {
     Serial.begin(9600);
-    pinMode(EN_TRIG, OUTPUT);
-    pinMode(MISO_ECHO, INPUT);
+    // pinMode(EN_TRIG, OUTPUT);
+    // pinMode(MISO_ECHO, INPUT);
 
-    servo.attach(SERVO, 500, 2500);
-  	// posiciona o servo na posicao central
-    while( posicao_servo < 90 ){
-      posicao_servo += VEL_SERVO;
-      servo.write(posicao_servo);
-      delay(100);
-    }
+    // servo.attach(SERVO, 500, 2500);
+  	// // posiciona o servo na posicao central
+    // while( posicao_servo < 90 ){
+    //   posicao_servo += VEL_SERVO;
+    //   servo.write(posicao_servo);
+    //   delay(100);
+    // }
+
+    pinMode(SLC   , INPUT);
+    pinMode(SR    , INPUT);
+    pinMode(SC    , INPUT);
+    pinMode(SL    , INPUT); 
+    pinMode(SRC   , INPUT);
+    pinMode(CS_SENSORS, OUTPUT);
+
+    digitalWrite(CS_SENSORS, HIGH);
+
+    pinMode(E_CH1, OUTPUT);
+    pinMode(E_CH2, OUTPUT);
+    digitalWrite(E_CH1, HIGH);
+    digitalWrite(E_CH2, HIGH);
+
+    ledcAttachPin(CHA_M1, PWM1_Ch);
+    ledcSetup(PWM1_Ch, PWM1_Freq, PWM1_Res);
+
+    ledcAttachPin(CHA_M2, PWM2_Ch);
+    ledcSetup(PWM2_Ch, PWM1_Freq, PWM1_Res);
 }
     
 void loop() {
 
-
-    //============ LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ==============
-    // Leitura do sensor ultrassônico
-    // Atualização do buffer para média móvel
-    for (int i = TAMANHO_MEDIA_MOVEL - 1; i > 0; --i) {
-      buffer[i] = buffer[i - 1];
-    }
-    buffer[0] = lerSensorUltrasonico();
-
-    // Cálculo da média móvel
-    float media = mediaMovel(buffer, TAMANHO_MEDIA_MOVEL);
-
-    // Impressão da distância
-    Serial.print("Distancia: ");
-    Serial.println(media);
-
-    //========== FIM LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ============
+  follow_segment();
 
 
-    //========== UPDATE POSICAO SERVO ==========
-    // anti-horario
-    if( direcao_atual == 0 ){
-      if(posicao_servo >= 180){
-          direcao_atual = 1;
-      }
-      else{
-          posicao_servo += VEL_SERVO; 
-      }
-    }
-    else{ //horario
-      if(posicao_servo <= 0){
-          direcao_atual = 0;
-      }
-      else{
-          posicao_servo -= VEL_SERVO; 
-      }
-    }
+    // //============ LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ==============
+    // // Leitura do sensor ultrassônico
+    // // Atualização do buffer para média móvel
+    // for (int i = TAMANHO_MEDIA_MOVEL - 1; i > 0; --i) {
+    //   buffer[i] = buffer[i - 1];
+    // }
+    // buffer[0] = lerSensorUltrasonico();
+
+    // // Cálculo da média móvel
+    // float media = mediaMovel(buffer, TAMANHO_MEDIA_MOVEL);
+
+    // // Impressão da distância
+    // Serial.print("Distancia: ");
+    // Serial.println(media);
+
+    // //========== FIM LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ============
+
+
+    // //========== UPDATE POSICAO SERVO ==========
+    // // anti-horario
+    // if( direcao_atual == 0 ){
+    //   if(posicao_servo >= 180){
+    //       direcao_atual = 1;
+    //   }
+    //   else{
+    //       posicao_servo += VEL_SERVO; 
+    //   }
+    // }
+    // else{ //horario
+    //   if(posicao_servo <= 0){
+    //       direcao_atual = 0;
+    //   }
+    //   else{
+    //       posicao_servo -= VEL_SERVO; 
+    //   }
+    // }
   
-  	servo.write(posicao_servo);
+  	// servo.write(posicao_servo);
   
-  	// Impressão da posicao
-    Serial.print("Posicao: ");
-    Serial.println(posicao_servo);
+  	// // Impressão da posicao
+    // Serial.print("Posicao: ");
+    // Serial.println(posicao_servo);
 
-    //========== FIM UPDATE POSICAO SERVO ==========
-
-
-    // read the sensor:
-    read_line();
-    //calibrate the values
-    calibrate_line_sensors();
-
-    // AQUI TEMOS OS VALORES JÁ CALIBRADOS
+    // //========== FIM UPDATE POSICAO SERVO ==========
 
 
-    delay(100);  // Aguarda 0.1 segundo        
+    // // read the sensor:
+    // read_line();
+    // //calibrate the values
+    // calibrate_line_sensors();
 
-    while(1) {
-        // FIRST MAIN LOOP BODY
-        // (when we find the goal, we use break; to get out of this)
+    // // AQUI TEMOS OS VALORES JÁ CALIBRADOS
+
+
+    // delay(100);  // Aguarda 0.1 segundo        
+
+    // while(1) {
+    //     // FIRST MAIN LOOP BODY
+    //     // (when we find the goal, we use break; to get out of this)
         
-        follow_segment();
+    //     follow_segment();
         
-        // Drive straight a bit. This helps us in case we entered the intersection at an angle.
-        // Note that we are slowing down - this prevents the robot from tipping forward too much.
-        set_motors(50,50);
-        delay(50);
+    //     // Drive straight a bit. This helps us in case we entered the intersection at an angle.
+    //     // Note that we are slowing down - this prevents the robot from tipping forward too much.
+    //     set_motors(50,50);
+    //     delay(50);
 
-        // These variables record whether the robot has seen a line to the
-        // left, straight ahead, and right, whil examining the current intersection.
-        unsigned char found_left        = 0;
-        unsigned char found_straight    = 0;
-        unsigned char found_right       = 0;
+    //     // These variables record whether the robot has seen a line to the
+    //     // left, straight ahead, and right, whil examining the current intersection.
+    //     unsigned char found_left        = 0;
+    //     unsigned char found_straight    = 0;
+    //     unsigned char found_right       = 0;
 
-        unsigned int sensors[5];
+    //     unsigned int sensors[5];
 
-        // Now read the sensors and check the intersection type.        
-        read_line(sensors);
+    //     // Now read the sensors and check the intersection type.        
+    //     read_line(sensors);
 
-        // Check for left and right exits.
-        if(sensors[0] > 100) found_left  = 1;
-        if(sensors[4] > 100) found_right = 1;
+    //     // Check for left and right exits.
+    //     if(sensors[0] > 100) found_left  = 1;
+    //     if(sensors[4] > 100) found_right = 1;
 
-        // Drive straight a bit more - this is enough to line up our wheels with the intersection.
-        set_motors(40,40);
-        delay(200);
+    //     // Drive straight a bit more - this is enough to line up our wheels with the intersection.
+    //     set_motors(40,40);
+    //     delay(200);
 
-        // Check for a straight exit.
-        read_line(sensors);
+    //     // Check for a straight exit.
+    //     read_line(sensors);
 
-        if(sensors[1] > 200 || sensors[2] > 200 || sensors[3] > 200) found_straight = 1;
+    //     if(sensors[1] > 200 || sensors[2] > 200 || sensors[3] > 200) found_straight = 1;
 
-        // Check for the ending spot.
-        // If all three middle sensors are on dark black, we have
-        // solved the maze.
-        if(sensors[1] > 600 && sensors[2] > 600 && sensors[3] > 600) break;
+    //     // Check for the ending spot.
+    //     // If all three middle sensors are on dark black, we have
+    //     // solved the maze.
+    //     if(sensors[1] > 600 && sensors[2] > 600 && sensors[3] > 600) break;
 
-        // Intersection identification is complete.
-        // If the maze has been solved, we can follow the existing
-        // path. Otherwise, we need to learn the solution.
-        unsigned char dir = select_turn(found_left, found_straight, found_right);
+    //     // Intersection identification is complete.
+    //     // If the maze has been solved, we can follow the existing
+    //     // path. Otherwise, we need to learn the solution.
+    //     unsigned char dir = select_turn(found_left, found_straight, found_right);
         
-        // Make the turn indicated by the path.
-        turn(dir);
+    //     // Make the turn indicated by the path.
+    //     turn(dir);
         
-        // Store the intersection in the path variable.
-        path[path_length] = dir;
-        path_length ++;
+    //     // Store the intersection in the path variable.
+    //     path[path_length] = dir;
+    //     path_length ++;
         
-        // You should check to make sure that the path_length does not
-        // exceed the bounds of the array. We'll ignore that in this example.
-        // Simplify the learned path.
-        simplify_path();
+    //     // You should check to make sure that the path_length does not
+    //     // exceed the bounds of the array. We'll ignore that in this example.
+    //     // Simplify the learned path.
+    //     simplify_path();
 
-        // Display the path on the LCD.
-        display_path();
-    }
+    //     // Display the path on the LCD.
+    //     display_path();
+    // }
     
-    // Now enter an infinite loop - we can re-run the maze as many times as we want to.
-    while(1) {
-        // Beep to show that we finished the maze.
-        // Wait for the user to press a button...
-        int i;
-        for(i = 0; i < path_length; i++) {
-            // SECOND MAIN LOOP BODY
+    // // Now enter an infinite loop - we can re-run the maze as many times as we want to.
+    // while(1) {
+    //     // Beep to show that we finished the maze.
+    //     // Wait for the user to press a button...
+    //     int i;
+    //     for(i = 0; i < path_length; i++) {
+    //         // SECOND MAIN LOOP BODY
             
-            follow_segment();
+    //         follow_segment();
             
-            // Drive straight while slowing down, as before.
-            set_motors(50,50);
-            delay(50);
+    //         // Drive straight while slowing down, as before.
+    //         set_motors(50,50);
+    //         delay(50);
             
-            set_motors(40,40);
-            delay(200);
+    //         set_motors(40,40);
+    //         delay(200);
             
-            // Make a turn according to the instruction stored in
-            // path[i].
-            turn(path[i]);
-        }
-        // Follow the last segment up to the finish.
-        follow_segment();
+    //         // Make a turn according to the instruction stored in
+    //         // path[i].
+    //         turn(path[i]);
+    //     }
+    //     // Follow the last segment up to the finish.
+    //     follow_segment();
         
-        // Now we should be at the finish! Restart the loop.
-    }
-
-
+    //     // Now we should be at the finish! Restart the loop.
+    // }
 }
 
 
@@ -322,10 +348,11 @@ void follow_segment() {
 
         // Get the position of the line.
         unsigned int sensors[5];
-        unsigned int position = read_line(sensors);
+        // unsigned int position = read_line(sensors);
+        read_line(sensors);
 
         // The "proportional" term should be 0 when we are on the line.
-        int proportional = ((int)position) - 2000;
+        // int proportional = ((int)position) - 2000;
 
         // Compute the derivative (change) and integral (sum) of the position.
         int derivative = proportional - last_proportional;
@@ -342,7 +369,7 @@ void follow_segment() {
         int power_difference = proportional*Kp + integral*Ki + derivative*Kd;
 
         // Compute the actual motor settings. We never set either motor to a negative value.
-        const int max = 60;         // the maximum speed
+        const int max = 255;         // the maximum speed
         
         if (power_difference > max)     power_difference = max;
         if (power_difference < -max)    power_difference = -max;
@@ -354,16 +381,23 @@ void follow_segment() {
         // determining whether there is a line straight ahead, and the
         // sensors 0 and 4 for detecting lines going to the left and
         // right.
-        if(sensors[1] < 100 && sensors[2] < 100 && sensors[3] < 100) {
-            // There is no line visible ahead, and we didn't see any
-            // intersection. Must be a dead end.
-            return;
-        }
-        else if(sensors[0] > 200 || sensors[4] > 200) {
-            // Found an intersection.
-            return;
-        }
+        // if(sensors[1] < 100 && sensors[2] < 100 && sensors[3] < 100) {
+        //     // There is no line visible ahead, and we didn't see any
+        //     // intersection. Must be a dead end.
+        //     return;
+        // }
+        // else if(sensors[0] > 200 || sensors[4] > 200) {
+        //     // Found an intersection.
+        //     return;
+        // }
     }
+}
+
+
+void set_motors(int right_motor, int left_motor){
+    ledcWrite(PWM1_Ch, right_motor);  // Canal motor direito  CHA_M1
+    ledcWrite(PWM2_Ch, left_motor);   // Canal motor esquerdo CHA_M2
+    return;
 }
 
 
