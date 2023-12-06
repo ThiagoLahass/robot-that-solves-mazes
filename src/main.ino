@@ -1,4 +1,4 @@
-#include <Servo.h>
+// #include <Servo.h>
 
 #define HIGH 1
 #define LOW  0
@@ -8,11 +8,11 @@
 //=== NOMEANDO AS PORTAS ===
 //#define   VCC_3_3     1
 //#define   EN          2
-#define     SLC         36
+#define     SLC         32
 #define     SR          39
 #define     SC          34
 #define     SL          35
-#define     SRC         32
+#define     SRC         36
 #define     E_CH1       33
 #define     CHA_M1      25
 #define     E_CH2       26
@@ -46,11 +46,20 @@
 //#define   GND         38
 //=========================
 
-#define PWM1_Ch    0
-#define PWM2_Ch    1
-#define PWM1_Res   8
-#define PWM1_Freq  1000
 
+// DEFINES DE VALORES RELACIONADOS A CONTROLE DE MOTORES
+#define PWM1_Ch     0 // Direita
+#define PWM2_Ch     1 // Esquerda
+#define PWM_Res     8
+#define PWM_Freq    1000
+#define MAX_SPEED   200
+#define BASE_SPEED  170
+
+
+// VALORES OBTIDOS ATRAVES DE EXPERIMENTOS
+#define BLACK_VALUE 2500        // totalmente em cima da linha guia preta
+#define WHITE_VALUE 0           // totalmente em cima do branco
+#define THRESHOLD_VALUE 1250    // meio termo
 
 
 // The set_motors() function in the Pololu AVR Library (see Section 6 for more information) lets you
@@ -64,10 +73,10 @@
 
 
 unsigned int sensors[NUM_SENSORS]       = {0};      // an array to hold sensor values
-unsigned int sensors_max[NUM_SENSORS]   = {1023};   // used to calibrate the initial values of the IR sensors
-unsigned int sensors_min[NUM_SENSORS]   = {0};      // used to calibrate the initial values of the IR sensors
+unsigned int sensors_max[NUM_SENSORS]   = {0};   // used to calibrate the initial values of the IR sensors
+unsigned int sensors_min[NUM_SENSORS]   = {4096};      // used to calibrate the initial values of the IR sensors
 
-float Kp = 1/20, Ki = 0, Kd = 3/2; // values of the PID constants values
+float Kp = 0.03, Ki = 0, Kd = 0; // values of the PID constants values
 
 
 char path[100] = "";
@@ -116,15 +125,18 @@ void display_path();
 const int TAMANHO_MEDIA_MOVEL = 5;
 float buffer[TAMANHO_MEDIA_MOVEL] = {0};
 
-int posicao_servo = 0;	
-int direcao_atual = 0;	// 0 indica anti-horario
-const int VEL_SERVO = 15; 
-Servo servo;
+// int posicao_servo = 0;	
+// int direcao_atual = 0;	// 0 indica anti-horario
+// const int VEL_SERVO = 15; 
+// Servo servo;
 
 void setup() {
     Serial.begin(9600);
-    // pinMode(EN_TRIG, OUTPUT);
-    // pinMode(MISO_ECHO, INPUT);
+    pinMode(EN_TRIG, OUTPUT);
+    pinMode(MISO_ECHO, INPUT);
+
+    pinMode(BUZZER, OUTPUT);
+    digitalWrite(BUZZER, LOW);
 
     // servo.attach(SERVO, 500, 2500);
   	// // posiciona o servo na posicao central
@@ -145,19 +157,99 @@ void setup() {
 
     pinMode(E_CH1, OUTPUT);
     pinMode(E_CH2, OUTPUT);
-    digitalWrite(E_CH1, HIGH);
-    digitalWrite(E_CH2, HIGH);
 
     ledcAttachPin(CHA_M1, PWM1_Ch);
-    ledcSetup(PWM1_Ch, PWM1_Freq, PWM1_Res);
+    ledcSetup(PWM1_Ch, PWM_Freq, PWM_Res);
 
     ledcAttachPin(CHA_M2, PWM2_Ch);
-    ledcSetup(PWM2_Ch, PWM1_Freq, PWM1_Res);
+    ledcSetup(PWM2_Ch, PWM_Freq, PWM_Res);
+
 }
     
 void loop() {
 
+  // follow_segment_on_off();
+
   follow_segment();
+
+  // read_line();
+
+  // Serial.print(sensors[0]);
+  // Serial.print(" ");
+
+  // Serial.print(sensors[1]);
+  // Serial.print(" ");
+
+  // Serial.print(sensors[2]);
+  // Serial.print(" ");
+
+  // Serial.print(sensors[3]);
+  // Serial.print(" ");
+
+  // Serial.println(sensors[4]);
+
+  // digitalWrite(E_CH1, LOW);
+  // digitalWrite(E_CH2, LOW);
+
+  // for(int i = 0; i < 20; i++){
+  //   calibrate_line_sensors();
+
+  //   Serial.print("MAX: ");
+  //   Serial.print(sensors_max[0]);
+  //   Serial.print(" ");
+
+  //   Serial.print(sensors_max[1]);
+  //   Serial.print(" ");
+
+  //   Serial.print(sensors_max[2]);
+  //   Serial.print(" ");
+
+  //   Serial.print(sensors_max[3]);
+  //   Serial.print(" ");
+
+  //   Serial.println(sensors_max[4]);
+
+  //   Serial.print("MIN: ");
+  //   Serial.print(sensors_min[0]);
+  //   Serial.print(" ");
+
+  //   Serial.print(sensors_min[1]);
+  //   Serial.print(" ");
+
+  //   Serial.print(sensors_min[2]);
+  //   Serial.print(" ");
+
+  //   Serial.print(sensors_min[3]);
+  //   Serial.print(" ");
+
+  //   Serial.println(sensors_min[4]);
+
+  //   delay(500);
+
+  // }
+
+
+  // mapping_sensors_values_to_calibrated_values();
+
+    // Serial.print(sensors[0]);
+    // Serial.print(" ");
+
+    // Serial.print(sensors[1]);
+    // Serial.print(" ");
+
+    // Serial.print(sensors[2]);
+    // Serial.print(" ");
+
+    // Serial.print(sensors[3]);
+    // Serial.print(" ");
+
+    // Serial.println(sensors[4]);
+    
+  // delay(5000);
+
+    
+
+  // follow_segment();
 
 
     // //============ LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ==============
@@ -335,58 +427,93 @@ float lerSensorUltrasonico() {
 }
 
 
+// FOLLOWING A SEGMENT USING ON-OFF CONTROL
+void follow_segment_on_off() {
+    while(1) {
+        read_line();
+
+        if( sensors[1] > THRESHOLD_VALUE ){  // deve rodar p/ direita
+          
+          set_motors(128+42, 128-22);
+        }
+        else if( sensors[3] > THRESHOLD_VALUE ){  // deve rodar p/ esquerda
+          set_motors(128+22, 128-42);
+        }
+        else if( sensors[2] > THRESHOLD_VALUE  ){
+          set_motors(128+42, 128-42);
+        }
+        else{
+          set_motors(128, 128);
+        }
+    }
+}
+
 
 // FOLLOWING A SEGMENT USING PID CONTROL
 void follow_segment() {
-    int     last_proportional   = 0;
-    long    integral            = 0;
+    int     last_proportional_left   = 0;
+    long    integral_left            = 0;
+
+    int     last_proportional_right  = 0;
+    long    integral_right           = 0;
 
     while(1) {
-        // Normally, we will be following a line. The code below is
-        // similar to the 3pi-linefollower-pid example, but the maximum
-        // speed is turned down to 60 for reliability.
-
-        // Get the position of the line.
-        unsigned int sensors[5];
-        // unsigned int position = read_line(sensors);
-        read_line(sensors);
+        read_line();
 
         // The "proportional" term should be 0 when we are on the line.
-        // int proportional = ((int)position) - 2000;
+        float proportional_left = sensors[1];
+        float proportional_right = sensors[3];
+
+        Serial.print(proportional_left);
+        Serial.print(" ");
+        Serial.println(proportional_right);
 
         // Compute the derivative (change) and integral (sum) of the position.
-        int derivative = proportional - last_proportional;
-        integral += proportional;
+        int derivative_left = proportional_left - last_proportional_left;
+        integral_left += proportional_left;
+
+        // Compute the derivative (change) and integral (sum) of the position.
+        int derivative_right = proportional_right - last_proportional_right;
+        integral_right += proportional_right;
 
         // Remember the last position.
-        last_proportional = proportional;
+        last_proportional_left = proportional_left;
+
+        last_proportional_right = proportional_right;
 
         // Compute the difference between the two motor power settings,
         // m1 - m2. If this is a positive number the robot will turn
         // to the left. If it is a negative number, the robot will
         // turn to the right, and the magnitude of the number determines
         // the sharpness of the turn.
-        int power_difference = proportional*Kp + integral*Ki + derivative*Kd;
+        int power_difference_left = proportional_left*Kp + integral_left*Ki + derivative_left*Kd;
+        int power_difference_right = proportional_right*Kp + integral_right*Ki + derivative_right*Kd;
 
-        // Compute the actual motor settings. We never set either motor to a negative value.
-        const int max = 255;         // the maximum speed
-        
-        if (power_difference > max)     power_difference = max;
-        if (power_difference < -max)    power_difference = -max;
+        Serial.print(power_difference_left);
+        Serial.print(" ");
+        Serial.println(power_difference_right);
 
-        if (power_difference < 0)   set_motors(max + power_difference,  max                     );
-        else                        set_motors(max,                     max - power_difference  );
+        set_motors(BASE_SPEED + power_difference_left, BASE_SPEED - power_difference_right);
 
-        // We use the inner three sensors (1, 2, and 3) for
-        // determining whether there is a line straight ahead, and the
-        // sensors 0 and 4 for detecting lines going to the left and
-        // right.
-        // if(sensors[1] < 100 && sensors[2] < 100 && sensors[3] < 100) {
+        delay(200);
+
+        // // Compute the actual motor settings. We never set either motor to a negative value.
+        // if (power_difference > MAX_SPEED)     power_difference = MAX_SPEED;
+        // if (power_difference < -MAX_SPEED)    power_difference = -MAX_SPEED;
+
+        // if (power_difference < 0)   set_motors(MAX_SPEED + power_difference,  MAX_SPEED                     );
+        // else                        set_motors(MAX_SPEED,                     MAX_SPEED - power_difference  );
+
+        // // We use the inner three sensors (1, 2, and 3) for
+        // // determining whether there is a line straight ahead, and the
+        // // sensors 0 and 4 for detecting lines going to the left and
+        // // right.
+        // if( sensors[1] < THRESHOLD_VALUE && sensors[2] < THRESHOLD_VALUE && sensors[3] < THRESHOLD_VALUE ) {
         //     // There is no line visible ahead, and we didn't see any
         //     // intersection. Must be a dead end.
         //     return;
         // }
-        // else if(sensors[0] > 200 || sensors[4] > 200) {
+        // else if( sensors[0] > THRESHOLD_VALUE || sensors[4] > THRESHOLD_VALUE ) {
         //     // Found an intersection.
         //     return;
         // }
@@ -395,6 +522,8 @@ void follow_segment() {
 
 
 void set_motors(int right_motor, int left_motor){
+    digitalWrite(E_CH1, HIGH);
+    digitalWrite(E_CH2, HIGH);
     ledcWrite(PWM1_Ch, right_motor);  // Canal motor direito  CHA_M1
     ledcWrite(PWM2_Ch, left_motor);   // Canal motor esquerdo CHA_M2
     return;
@@ -502,19 +631,39 @@ unsigned int read_battery_millivolts() {
 // under sensor 1, 2000 means that the line is directly under sensor 2, and so on.
 
 // Here is a simplified version of the code that reads the sensors
+
+// Por experimentos os valores estão variando entre:
+// 100 % BRANCO =~ 0
+// 100 % PRETO  =~ 2700
 void read_line(){
     sensors[0] = analogRead(SLC);
     sensors[1] = analogRead(SL);
     sensors[2] = analogRead(SC);
     sensors[3] = analogRead(SR);
     sensors[4] = analogRead(SRC);
+
+    Serial.print(sensors[0]);
+    Serial.print(" ");
+
+    Serial.print(sensors[1]);
+    Serial.print(" ");
+
+    Serial.print(sensors[2]);
+    Serial.print(" ");
+
+    Serial.print(sensors[3]);
+    Serial.print(" ");
+
+    Serial.println(sensors[4]);
 }
 
 void calibrate_line_sensors(){
     
     // calibrate during the robot make a turn
     // while ( making a turn ) {
-    while (millis() < 5000) {
+    // while (millis() < 3000) {
+
+    //     set_motors(110,146);
         
         //read the IR sensors
         read_line();
@@ -563,20 +712,28 @@ void calibrate_line_sensors(){
         if (sensors[4] < sensors_min[4]) {
             sensors_min[4] = sensors[4];
         }
-    }
+    // }
 }
 
 void mapping_sensors_values_to_calibrated_values(){
-    // in case the sensor value is outside the range seen during calibration
-    sensors[0] = constrain(sensors[0], sensors_min[0], sensors_max[0]);
-    sensors[1] = constrain(sensors[1], sensors_min[1], sensors_max[1]);
-    sensors[2] = constrain(sensors[2], sensors_min[2], sensors_max[2]);
-    sensors[3] = constrain(sensors[3], sensors_min[3], sensors_max[3]);
-    sensors[4] = constrain(sensors[4], sensors_min[4], sensors_max[4]);
     // apply the calibration to the sensor reading
     sensors[0] = map(sensors[0], sensors_min[0], sensors_max[0], 0, 255);
     sensors[1] = map(sensors[1], sensors_min[1], sensors_max[1], 0, 255);
     sensors[2] = map(sensors[2], sensors_min[2], sensors_max[2], 0, 255);
     sensors[3] = map(sensors[3], sensors_min[3], sensors_max[3], 0, 255);
     sensors[4] = map(sensors[4], sensors_min[4], sensors_max[4], 0, 255);
+
+    Serial.print(sensors[0]);
+    Serial.print(" ");
+
+    Serial.print(sensors[1]);
+    Serial.print(" ");
+
+    Serial.print(sensors[2]);
+    Serial.print(" ");
+
+    Serial.print(sensors[3]);
+    Serial.print(" ");
+
+    Serial.println(sensors[4]);
 }
