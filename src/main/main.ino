@@ -117,7 +117,7 @@ void setup() {
     Serial.begin(115200);
     Wire.begin();
     byte status = mpu.begin();
-    while(status!=0){ } // stop everything if could not connect to MPU6050
+    while(status != 0){ } // stop everything if could not connect to MPU6050
     delay(1000);
     // mpu.upsideDownMounting = true; // uncomment this line if the MPU6050 is mounted upside-down
     mpu.calcOffsets(); // gyro and accelero
