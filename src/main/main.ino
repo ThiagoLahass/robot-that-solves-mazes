@@ -1,4 +1,4 @@
-// #include <Servo.h>
+#include <ESP32Servo.h>
 #include "Wire.h"
 #include <MPU6050_light.h>
 
@@ -44,8 +44,8 @@ unsigned long timer = 0;
 
 
 // DEFINES DE VALORES RELACIONADOS A CONTROLE DE MOTORES
-#define PWM1_Ch     0 // Direita
-#define PWM2_Ch     1 // Esquerda
+#define PWM1_Ch     2 // Direita
+#define PWM2_Ch     3 // Esquerda
 #define PWM_Res     8
 #define PWM_Freq    1000
 #define MAX_SPEED   200
@@ -102,45 +102,43 @@ bool button_is_pressed();
 
 void display_path();
 
-
-
 const int TAMANHO_MEDIA_MOVEL = 5;
 float buffer[TAMANHO_MEDIA_MOVEL] = {0};
 
-// int posicao_servo = 0;	
-// int direcao_atual = 0;	// 0 indica anti-horario
-// const int VEL_SERVO = 15; 
-// Servo servo;
+Servo servo;    // create servo object to control a servo
+int pos = 0;    // variable to store the servo position
+const int VEL_SERVO = 90;
 
 void setup() {
 
     Serial.begin(115200);
     Wire.begin();
     byte status = mpu.begin();
-    while(status != 0){ } // stop everything if could not connect to MPU6050
+    while(status != 0){ }       // stop everything if could not connect to MPU6050
     delay(1000);
     // mpu.upsideDownMounting = true; // uncomment this line if the MPU6050 is mounted upside-down
-    mpu.calcOffsets(); // gyro and accelero
+    mpu.calcOffsets();          // gyro and accelero
 
-    pinMode(EN_TRIG, OUTPUT);
-    pinMode(MISO_ECHO, INPUT);
+    // pinMode(EN_TRIG, OUTPUT);
+    // pinMode(MISO_ECHO, INPUT);
 
     pinMode(BUZZER, OUTPUT);
     digitalWrite(BUZZER, LOW);
 
-    // servo.attach(SERVO, 500, 2500);
-  	// // posiciona o servo na posicao central
-    // while( posicao_servo < 90 ){
-    //   posicao_servo += VEL_SERVO;
-    //   servo.write(posicao_servo);
-    //   delay(100);
-    // }
+    // servo.attach(SERVO, 500, 2500); // attaches the servo on pin 13 to the servo object
+    // using default min/max of 1000us and 2000us
+    // different servos may require different min/max settings
+    // for an accurate 0 to 180 sweep
 
-    pinMode(SLC   , INPUT);
-    pinMode(SR    , INPUT);
-    pinMode(SC    , INPUT);
-    pinMode(SL    , INPUT); 
-    pinMode(SRC   , INPUT);
+  	// posiciona o servo na posicao central
+    // servo.write(90);
+    // delay(100);
+
+    pinMode(SLC       , INPUT);
+    pinMode(SR        , INPUT);
+    pinMode(SC        , INPUT);
+    pinMode(SL        , INPUT); 
+    pinMode(SRC       , INPUT);
     pinMode(CS_SENSORS, OUTPUT);
 
     digitalWrite(CS_SENSORS, HIGH);
@@ -154,59 +152,128 @@ void setup() {
     ledcAttachPin(CHA_M2, PWM2_Ch);
     ledcSetup(PWM2_Ch, PWM_Freq, PWM_Res);
 
-    calibrate_line_sensors();
+    // calibrate_line_sensors();
 
-    Serial.print("MAX: ");
-    Serial.print(sensors_max[0]);
-    Serial.print(" ");
+    // Serial.print("MAX: ");
+    // Serial.print(sensors_max[0]);
+    // Serial.print(" ");
 
-    Serial.print(sensors_max[1]);
-    Serial.print(" ");
+    // Serial.print(sensors_max[1]);
+    // Serial.print(" ");
 
-    Serial.print(sensors_max[2]);
-    Serial.print(" ");
+    // Serial.print(sensors_max[2]);
+    // Serial.print(" ");
 
-    Serial.print(sensors_max[3]);
-    Serial.print(" ");
+    // Serial.print(sensors_max[3]);
+    // Serial.print(" ");
 
-    Serial.println(sensors_max[4]);
+    // Serial.println(sensors_max[4]);
 
-    Serial.print("MIN: ");
-    Serial.print(sensors_min[0]);
-    Serial.print(" ");
+    // Serial.print("MIN: ");
+    // Serial.print(sensors_min[0]);
+    // Serial.print(" ");
 
-    Serial.print(sensors_min[1]);
-    Serial.print(" ");
+    // Serial.print(sensors_min[1]);
+    // Serial.print(" ");
 
-    Serial.print(sensors_min[2]);
-    Serial.print(" ");
+    // Serial.print(sensors_min[2]);
+    // Serial.print(" ");
 
-    Serial.print(sensors_min[3]);
-    Serial.print(" ");
+    // Serial.print(sensors_min[3]);
+    // Serial.print(" ");
 
-    Serial.println(sensors_min[4]);
+    // Serial.println(sensors_min[4]);
 }
     
 void loop() {
 
   delay(100);
 
-  // follow_segment_on_off();
-
   follow_segment();
 
+  // set the motors bit more slowly
   set_motors(158, 98);
   read_line();
 
+  // If the crossing sensors are already on the line, leave immediately
+  // if not, walk a little further until you find the crossing line.
   while(sensors[0] < THRESHOLD_VALUE && sensors[4] < THRESHOLD_VALUE){
     read_line();
   }
-
-  set_motors(128, 128);
-
+  // stop the motors
+  // set_motors(128, 128);
+  turn_off_motors();
   delay(100);
 
-  turn('L');
+  //================= FAZER LEITURA DAS PAREDES =================
+  servo.write(0);
+	delay(1000);
+
+  servo.write(90);
+	delay(1000); 
+
+  servo.write(180);
+	delay(1000); 
+
+  servo.write(90);
+	delay(1000);
+
+  //=================FIM FAZER LEITURA DAS PAREDES =================
+
+  // These variables record whether the robot has seen a line to the
+  // left, straight ahead, and right, whil examining the current intersection.
+  unsigned char found_left      = 0;
+  unsigned char found_straight  = 0;
+  unsigned char found_right     = 0;
+
+  // Check for left and right exits.
+  read_line();
+  if(sensors[0] > THRESHOLD_VALUE){
+    found_left  = 1;
+    Serial.println("found_left");
+  }
+  if(sensors[4] > THRESHOLD_VALUE){
+    found_right = 1;
+    Serial.println("found_right");
+  }
+  if(sensors[2] > THRESHOLD_VALUE){
+    found_straight = 1;
+    Serial.println("found_straight");
+  }
+
+  //     // Check for the ending spot.
+  //     // If all three middle sensors are on dark black, we have
+  //     // solved the maze.
+  //     if(sensors[1] > 600 && sensors[2] > 600 && sensors[3] > 600) break;
+
+  // Intersection identification is complete.
+  // If the maze has been solved, we can follow the existing
+  // path. Otherwise, we need to learn the solution.
+  unsigned char dir = select_turn(found_left, found_straight, found_right);
+
+  Serial.print("Direção: ");
+  Serial.println((char)dir);
+  
+  delay(200);
+  
+  // Make the turn indicated by the path.
+  turn(dir);
+  
+  // Store the intersection in the path variable.
+  path[path_length] = dir;
+  path_length ++;
+
+  Serial.print("Path: ");
+  Serial.println(path);
+
+  simplify_path();
+
+  // Display the path on the LCD.
+  Serial.print("Simplified Path: ");
+  Serial.println(path);
+
+
+
 
 
   // mapping_sensors_values_to_calibrated_values();
@@ -225,11 +292,7 @@ void loop() {
 
     // Serial.println(sensors[4]);
     
-  // delay(5000);
-
-    
-
-  // follow_segment();
+    // delay(5000);
 
 
     // //============ LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ==============
@@ -437,16 +500,15 @@ void follow_segment() {
     int     last_proportional_right  = 0;
     long    integral_right           = 0;
 
+    unsigned long initial_time, atual_time;
+    initial_time = millis();
+
     while(1) {
         read_line();
 
         // The "proportional" term should be 0 when we are on the line.
         float proportional_left  = sensors[1];
         float proportional_right = sensors[3];
-
-        // Serial.print(proportional_left);
-        // Serial.print(" ");
-        // Serial.println(proportional_right);
 
         // Compute the derivative (change) and integral (sum) of the position.
         int derivative_left = proportional_left - last_proportional_left;
@@ -458,7 +520,6 @@ void follow_segment() {
 
         // Remember the last position.
         last_proportional_left = proportional_left;
-
         last_proportional_right = proportional_right;
 
         // Compute the difference between the two motor power settings,
@@ -473,29 +534,34 @@ void follow_segment() {
         // Serial.print(" ");
         // Serial.println(power_difference_right);
 
-        set_motors(180 + power_difference_left, 76 - power_difference_right); // direita, esquerda
 
+        //180, 76
+        set_motors(165 + power_difference_left, 91 - power_difference_right); // direita, esquerdo
 
-        // // Compute the actual motor settings. We never set either motor to a negative value.
-        // if (power_difference > MAX_SPEED)     power_difference = MAX_SPEED;
-        // if (power_difference < -MAX_SPEED)    power_difference = -MAX_SPEED;
+        // We use the inner three sensors (1, 2, and 3) for
+        // determining whether there is a line straight ahead, and the
+        // sensors 0 and 4 for detecting lines going to the left and
+        // right.
+        atual_time = millis();
 
-        // if (power_difference < 0)   set_motors(MAX_SPEED + power_difference,  MAX_SPEED                     );
-        // else                        set_motors(MAX_SPEED,                     MAX_SPEED - power_difference  );
-
-        // // We use the inner three sensors (1, 2, and 3) for
-        // // determining whether there is a line straight ahead, and the
-        // // sensors 0 and 4 for detecting lines going to the left and
-        // // right.
-        if( sensors[1] > THRESHOLD_VALUE && sensors[2] > THRESHOLD_VALUE && sensors[3] > THRESHOLD_VALUE ) {
-            // There is no line visible ahead, and we didn't see any
-            // intersection. Must be a dead end.
-            return;
+        if( atual_time > initial_time + 1000){
+            if(sensors[1] > THRESHOLD_VALUE && sensors[2] > THRESHOLD_VALUE && sensors[3] > THRESHOLD_VALUE ) {
+              // There is no line visible ahead, and we didn't see any
+              // intersection. Must be a dead end.
+              Serial.println("Intersection 3 lines found");
+              return;
+            }
+            else if(sensors[0] > THRESHOLD_VALUE || sensors[4] > THRESHOLD_VALUE){
+                // Found an intersection.
+                if( sensors[0] > THRESHOLD_VALUE ){
+                    Serial.println("Intersection left found");
+                }
+                if( sensors[0] > THRESHOLD_VALUE ){
+                    Serial.println("Intersection right found");
+                }
+                return;
+            }
         }
-        // else if( sensors[0] > THRESHOLD_VALUE || sensors[4] > THRESHOLD_VALUE ) {
-        //     // Found an intersection.
-        //     return;
-        // }
     }
 }
 
@@ -508,24 +574,35 @@ void set_motors(int right_motor, int left_motor){
     return;
 }
 
+void turn_off_motors(){
+    digitalWrite(E_CH1, LOW);
+    digitalWrite(E_CH2, LOW);
+    return;
+}
+
 
 // Turns according to the parameter dir, which should be 'L', 'R', 'S' (straight), or 'B' (back).
 void turn (char dir) {
   mpu.update();
   float posicao_inicial = mpu.getAngleZ();
-  float posicao_atual;
+  float posicao_atual = posicao_inicial;
+
+  Serial.print("posicao_inicial: ");
   Serial.println(posicao_inicial);
 
     switch(dir) {
         case 'L':
             // Turn left with giroscope
+            Serial.println("Esquerda");
             set_motors(128+45, 128+45);
+            posicao_atual = mpu.getAngleZ();
             while( posicao_atual < posicao_inicial + 85 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
-              Serial.println(posicao_atual);
+              // Serial.println(posicao_atual);
             }
-            set_motors(128, 128);
+            //set_motors(128, 128);
+            turn_off_motors();
             break;
 
 
@@ -542,15 +619,18 @@ void turn (char dir) {
             // break;
 
         case 'R':
-
             // Turn right with giroscope
-            set_motors(128-35, 128-35);
-            while( posicao_atual < posicao_inicial - 85 ){
+            set_motors(128-45, 128-45);
+            Serial.println("Direita");
+            posicao_atual = mpu.getAngleZ();
+            while( posicao_atual > posicao_inicial - 85 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
+              Serial.print("posicao_atual: ");
               Serial.println(posicao_atual);
             }
-            set_motors(128, 128);
+            //set_motors(128, 128);
+            turn_off_motors();
             break;
 
             // // Turn right with line sensors
@@ -564,15 +644,17 @@ void turn (char dir) {
             // set_motors(128, 128);
             // break;
         case 'B':
-
           // Turn around with giroscope
-            set_motors(128+35, 128+35);
+            Serial.println("Back");
+            set_motors(128+45, 128+45);
+            posicao_atual = mpu.getAngleZ();
             while( posicao_atual < posicao_inicial + 175 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
-              Serial.println(posicao_atual);
+              // Serial.println(posicao_atual);
             }
-            set_motors(128, 128);
+            //set_motors(128, 128);
+            turn_off_motors();
             break;
 
             // // Turn around.
@@ -679,19 +761,19 @@ void read_line(){
     sensors[3] = analogRead(SR);
     sensors[4] = analogRead(SRC);
 
-    // Serial.print(sensors[0]);
-    // Serial.print(" ");
+    Serial.print(sensors[0]);
+    Serial.print(" ");
 
-    // Serial.print(sensors[1]);
-    // Serial.print(" ");
+    Serial.print(sensors[1]);
+    Serial.print(" ");
 
-    // Serial.print(sensors[2]);
-    // Serial.print(" ");
+    Serial.print(sensors[2]);
+    Serial.print(" ");
 
-    // Serial.print(sensors[3]);
-    // Serial.print(" ");
+    Serial.print(sensors[3]);
+    Serial.print(" ");
 
-    // Serial.println(sensors[4]);
+    Serial.println(sensors[4]);
 }
 
 void calibrate_line_sensors(){
