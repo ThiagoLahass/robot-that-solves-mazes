@@ -1,19 +1,16 @@
 #include <ESP32Servo.h>
 #include "Wire.h"
 #include <MPU6050_light.h>
-
+#include <string.h>
 
 // Private Objects and Variables
 MPU6050 mpu(Wire);
 unsigned long timer = 0;
 
+#define     HIGH        1
+#define     LOW         0
 
-#define HIGH 1
-#define LOW  0
-
-#define NUM_SENSORS 5
-
-//=== NOMEANDO AS PORTAS ===
+//=== NAMING THE PORTS ===
 #define     SLC         32
 #define     SR          39
 #define     SC          34
@@ -42,21 +39,58 @@ unsigned long timer = 0;
 #define     MOSI        23
 //=========================
 
+// ============================= LCD COMMANDS =============================
+const int DATA[] = {4, 0, 2, 15};
+#define     DATA_SIZE 4
 
-// DEFINES DE VALORES RELACIONADOS A CONTROLE DE MOTORES
-#define PWM1_Ch     2 // Direita
-#define PWM2_Ch     3 // Esquerda
-#define PWM_Res     8
-#define PWM_Freq    1000
-#define MAX_SPEED   200
-#define BASE_SPEED  170
+// Commands: [- - - RS D7 D6 D5 D4]
+#define     FUNCTION_SET 	      0x20 	// 0010 0000 - 4 bits
+#define     DISPLAY_CONTROL     0x0C 	// 0000 1100
+#define     CLEAR_DISPLAY 	    0x01 	// 0000 0001
+#define     RETURN_HOME 	      0x02 	// 0000 0010
+#define     ENTRY_MODE_SET 	    0x06 	// 0000 0110
+
+// States
+#define     LCD_DISPLAYON 		  0x04
+#define     LCD_DISPLAYOFF 		  0x00
+#define     DISPLAY_FUNCTION 	  0x08
+#define     ENTER 				      0xA8  //1010 1000
+#define     DISPLAY_SHIFT_LEFT 	0x18  //0001 1000
+#define     DISPLAY_SHIFT_RIGHT 0x1C  //0001 1100
+
+void pulseEnable();
+void initLCD();
+void write4bits(int value);
+void write8bits(int value);
+
+void writeData(const char* value){
+  char c;
+  for (int i = 0; i < strlen(value); i++){
+    c = value[i];
+    
+    digitalWrite(RS, HIGH);
+    write8bits(c);
+    digitalWrite(RS, LOW);
+  }
+}
+
+void display_sensors_values_on_LCD();
+// ============================= END LCD COMMANDS =============================
+
+// DEFINES OF VALUES RELATED TO ENGINE CONTROL
+#define     PWM1_Ch     2       // Direita
+#define     PWM2_Ch     3       // Esquerda
+#define     PWM_Res     8
+#define     PWM_Freq    1000
+#define     MAX_SPEED   200
+#define     BASE_SPEED  170
+
+#define     LINE_THRESHOLD_VALUE 500      // line reading cut-off value
+#define     WALL_THRESHOLD_VALUE 15       // wall reading cut-off value
 
 
-// VALORES OBTIDOS ATRAVES DE EXPERIMENTOS
-#define BLACK_VALUE 2500        // totalmente em cima da linha guia preta
-#define WHITE_VALUE 0           // totalmente em cima do branco
-#define THRESHOLD_VALUE 500     // valor de corte
 
+#define     NUM_SENSORS 5
 
 unsigned int sensors[NUM_SENSORS]       = {0};      // an array to hold sensor values
 unsigned int sensors_max[NUM_SENSORS]   = {0};   // used to calibrate the initial values of the IR sensors
@@ -64,15 +98,15 @@ unsigned int sensors_min[NUM_SENSORS]   = {4096};      // used to calibrate the 
 
 float Kp = 0.008, Ki = 0, Kd = 0; // values of the PID constants values
 
-
 char path[100] = "";
 
 unsigned char path_length = 0; // the length of the path
 
 
-float mediaMovel(float *buffer, int tamanho);
 
-float lerSensorUltrasonico();
+float moving_average(float *buffer, int tamanho);
+
+float read_ultrasonic_sensor();
 
 void follow_segment();
 
@@ -102,12 +136,13 @@ bool button_is_pressed();
 
 void display_path();
 
-const int TAMANHO_MEDIA_MOVEL = 5;
-float buffer[TAMANHO_MEDIA_MOVEL] = {0};
+const int SIZE_MOVING_AVERAGE = 5;
+float buffer[SIZE_MOVING_AVERAGE] = {0};
 
 Servo servo;    // create servo object to control a servo
 int pos = 0;    // variable to store the servo position
-const int VEL_SERVO = 90;
+
+float average_distance = 0; // average distance read by the ultrasonic sensor
 
 void setup() {
 
@@ -119,20 +154,16 @@ void setup() {
     // mpu.upsideDownMounting = true; // uncomment this line if the MPU6050 is mounted upside-down
     mpu.calcOffsets();          // gyro and accelero
 
-    // pinMode(EN_TRIG, OUTPUT);
-    // pinMode(MISO_ECHO, INPUT);
+    pinMode(EN_TRIG, OUTPUT);
+    pinMode(MISO_ECHO, INPUT);
 
     pinMode(BUZZER, OUTPUT);
     digitalWrite(BUZZER, LOW);
 
-    // servo.attach(SERVO, 500, 2500); // attaches the servo on pin 13 to the servo object
-    // using default min/max of 1000us and 2000us
-    // different servos may require different min/max settings
-    // for an accurate 0 to 180 sweep
-
+    servo.attach(SERVO, 500, 2500); // attaches the servo on pin SERVO to the servo object
   	// posiciona o servo na posicao central
-    // servo.write(90);
-    // delay(100);
+    servo.write(90);
+    delay(500);
 
     pinMode(SLC       , INPUT);
     pinMode(SR        , INPUT);
@@ -183,6 +214,25 @@ void setup() {
     // Serial.print(" ");
 
     // Serial.println(sensors_min[4]);
+
+    // ========================== LCD ==========================
+    pinMode(RS, OUTPUT);
+    pinMode(EN_TRIG, OUTPUT);
+    
+    for (int i = 0; i < DATA_SIZE; i++){
+      pinMode(DATA[i], OUTPUT);
+    }
+
+    initLCD();
+    
+    // Always good to clear and return home
+    write8bits(CLEAR_DISPLAY);
+    write8bits(RETURN_HOME);
+    delay(2); // 1.52ms delay needed for the Return Home command
+
+    writeData("Thiago Lahass");
+    write8bits(ENTER);
+    writeData("Eng Computacao");
 }
     
 void loop() {
@@ -197,49 +247,84 @@ void loop() {
 
   // If the crossing sensors are already on the line, leave immediately
   // if not, walk a little further until you find the crossing line.
-  while(sensors[0] < THRESHOLD_VALUE && sensors[4] < THRESHOLD_VALUE){
+  while(sensors[0] < LINE_THRESHOLD_VALUE && sensors[4] < LINE_THRESHOLD_VALUE){
     read_line();
   }
+
   // stop the motors
   // set_motors(128, 128);
   turn_off_motors();
   delay(100);
 
-  //================= FAZER LEITURA DAS PAREDES =================
-  servo.write(0);
-	delay(1000);
-
-  servo.write(90);
-	delay(1000); 
-
-  servo.write(180);
-	delay(1000); 
-
-  servo.write(90);
-	delay(1000);
-
-  //=================FIM FAZER LEITURA DAS PAREDES =================
-
-  // These variables record whether the robot has seen a line to the
-  // left, straight ahead, and right, whil examining the current intersection.
+  //================== FOLLOWING THE MAZE ACCORDING TO THE WALLS ==================
+  //================================ READ THE WALLS ===============================
   unsigned char found_left      = 0;
   unsigned char found_straight  = 0;
   unsigned char found_right     = 0;
 
-  // Check for left and right exits.
-  read_line();
-  if(sensors[0] > THRESHOLD_VALUE){
-    found_left  = 1;
+  // Servo facing left
+  servo.write(180);
+	delay(1000);
+  average_distance = read_ultrasonic_sensor();
+  display_sensors_values_on_LCD();
+
+  if( average_distance > WALL_THRESHOLD_VALUE ){  // If the left is free, we can take it immediately
+    found_left = 1;
     Serial.println("found_left");
   }
-  if(sensors[4] > THRESHOLD_VALUE){
-    found_right = 1;
-    Serial.println("found_right");
+  else{
+    // Servo facing forward
+    servo.write(90);
+    delay(1000);
+    average_distance = read_ultrasonic_sensor();
+    display_sensors_values_on_LCD();
+    
+    if(average_distance > WALL_THRESHOLD_VALUE){
+      found_straight = 1;
+      Serial.println("found_straight");
+    }
+    else{
+      // Servo facing right
+      servo.write(0);
+      delay(1000);
+      average_distance = read_ultrasonic_sensor();
+      display_sensors_values_on_LCD();
+
+      if(average_distance > WALL_THRESHOLD_VALUE){
+        found_right = 1;
+        Serial.println("found_right");
+      }
+    }
   }
-  if(sensors[2] > THRESHOLD_VALUE){
-    found_straight = 1;
-    Serial.println("found_straight");
-  }
+
+  // Servo facing forward
+  servo.write(90);
+	delay(1000);
+  //============================ END READ THE WALLS ==============================
+
+
+  //================= FOLLOWING THE MAZE ACCORDING TO THE LINES ==================
+  // These variables record whether the robot has seen a line to the
+  // left, straight ahead, and right, whil examining the current intersection.
+
+  // unsigned char found_left      = 0;
+  // unsigned char found_straight  = 0;
+  // unsigned char found_right     = 0;
+
+  // // Check for left and right exits.
+  // read_line();
+  // if(sensors[0] > LINE_THRESHOLD_VALUE){
+  //   found_left  = 1;
+  //   Serial.println("found_left");
+  // }
+  // if(sensors[4] > LINE_THRESHOLD_VALUE){
+  //   found_right = 1;
+  //   Serial.println("found_right");
+  // }
+  // if(sensors[2] > LINE_THRESHOLD_VALUE){
+  //   found_straight = 1;
+  //   Serial.println("found_straight");
+  // }
 
   //     // Check for the ending spot.
   //     // If all three middle sensors are on dark black, we have
@@ -249,6 +334,7 @@ void loop() {
   // Intersection identification is complete.
   // If the maze has been solved, we can follow the existing
   // path. Otherwise, we need to learn the solution.
+
   unsigned char dir = select_turn(found_left, found_straight, found_right);
 
   Serial.print("Direção: ");
@@ -293,52 +379,6 @@ void loop() {
     // Serial.println(sensors[4]);
     
     // delay(5000);
-
-
-    // //============ LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ==============
-    // // Leitura do sensor ultrassônico
-    // // Atualização do buffer para média móvel
-    // for (int i = TAMANHO_MEDIA_MOVEL - 1; i > 0; --i) {
-    //   buffer[i] = buffer[i - 1];
-    // }
-    // buffer[0] = lerSensorUltrasonico();
-
-    // // Cálculo da média móvel
-    // float media = mediaMovel(buffer, TAMANHO_MEDIA_MOVEL);
-
-    // // Impressão da distância
-    // Serial.print("Distancia: ");
-    // Serial.println(media);
-
-    // //========== FIM LEITURA E ATUALIZAÇÃO DA DISTANCIA DO ULTRASOM ============
-
-
-    // //========== UPDATE POSICAO SERVO ==========
-    // // anti-horario
-    // if( direcao_atual == 0 ){
-    //   if(posicao_servo >= 180){
-    //       direcao_atual = 1;
-    //   }
-    //   else{
-    //       posicao_servo += VEL_SERVO; 
-    //   }
-    // }
-    // else{ //horario
-    //   if(posicao_servo <= 0){
-    //       direcao_atual = 0;
-    //   }
-    //   else{
-    //       posicao_servo -= VEL_SERVO; 
-    //   }
-    // }
-  
-  	// servo.write(posicao_servo);
-  
-  	// // Impressão da posicao
-    // Serial.print("Posicao: ");
-    // Serial.println(posicao_servo);
-
-    // //========== FIM UPDATE POSICAO SERVO ==========
 
 
     // // read the sensor:
@@ -443,30 +483,38 @@ void loop() {
 
 
 // Função para calcular a média móvel
-float mediaMovel(float *buffer, int tamanho) {
-    float soma = 0.0;
-    for (int i = 0; i < tamanho; ++i) {
-        soma += buffer[i];
+float moving_average(float *buffer, int size) {
+    float sum = 0.0;
+    for (int i = 0; i < size; ++i) {
+        sum += buffer[i];
     }
-    return soma / tamanho;
+    return sum / size;
 }
 
 // Função para obter a leitura do sensor ultrassônico
-float lerSensorUltrasonico() {
-    // Envie um pulso curto para o pino Trig para ativar a medição
-    digitalWrite(EN_TRIG, LOW);
-    delayMicroseconds(1);
-    digitalWrite(EN_TRIG, HIGH);
-    delayMicroseconds(1);
-    digitalWrite(EN_TRIG, LOW);
+float read_ultrasonic_sensor() {
+    float duration, distance;
+    for(int i = 0; i < SIZE_MOVING_AVERAGE; i++){
+        // Envie um pulso curto para o pino Trig para ativar a medição
+        digitalWrite(EN_TRIG, LOW);
+        delayMicroseconds(10);
+        digitalWrite(EN_TRIG, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(EN_TRIG, LOW);
 
-    // Meça a duração do pulso no pino Echo
-    float duration = pulseIn(MISO_ECHO, HIGH);
+        // Meça a duração do pulso no pino Echo
+        duration = pulseIn(MISO_ECHO, HIGH);
 
-    // Converta a duração em distância (considerando velocidade do som ~343m/s)
-    float distance = duration * 0.0343 / 2;
+        // Converta a duração em distância (considerando velocidade do som ~343m/s)
+        distance = duration * 0.0343 / 2;
 
-    return distance;
+        buffer[i] = distance;
+    }
+
+    // Cálculo da média móvel
+    float average_distance = moving_average(buffer, SIZE_MOVING_AVERAGE);
+
+    return average_distance;
 }
 
 
@@ -475,14 +523,14 @@ void follow_segment_on_off() {
     while(1) {
         read_line();
 
-        if( sensors[1] > THRESHOLD_VALUE ){  // deve rodar p/ direita
+        if( sensors[1] > LINE_THRESHOLD_VALUE ){  // deve rodar p/ direita
           
           set_motors(128+42, 128-22);
         }
-        else if( sensors[3] > THRESHOLD_VALUE ){  // deve rodar p/ esquerda
+        else if( sensors[3] > LINE_THRESHOLD_VALUE ){  // deve rodar p/ esquerda
           set_motors(128+22, 128-42);
         }
-        else if( sensors[2] > THRESHOLD_VALUE  ){
+        else if( sensors[2] > LINE_THRESHOLD_VALUE  ){
           set_motors(128+42, 128-42);
         }
         else{
@@ -545,18 +593,18 @@ void follow_segment() {
         atual_time = millis();
 
         if( atual_time > initial_time + 1000){
-            if(sensors[1] > THRESHOLD_VALUE && sensors[2] > THRESHOLD_VALUE && sensors[3] > THRESHOLD_VALUE ) {
+            if(sensors[1] > LINE_THRESHOLD_VALUE && sensors[2] > LINE_THRESHOLD_VALUE && sensors[3] > LINE_THRESHOLD_VALUE ) {
               // There is no line visible ahead, and we didn't see any
               // intersection. Must be a dead end.
               Serial.println("Intersection 3 lines found");
               return;
             }
-            else if(sensors[0] > THRESHOLD_VALUE || sensors[4] > THRESHOLD_VALUE){
+            else if(sensors[0] > LINE_THRESHOLD_VALUE || sensors[4] > LINE_THRESHOLD_VALUE){
                 // Found an intersection.
-                if( sensors[0] > THRESHOLD_VALUE ){
+                if( sensors[0] > LINE_THRESHOLD_VALUE ){
                     Serial.println("Intersection left found");
                 }
-                if( sensors[0] > THRESHOLD_VALUE ){
+                if( sensors[0] > LINE_THRESHOLD_VALUE ){
                     Serial.println("Intersection right found");
                 }
                 return;
@@ -595,7 +643,6 @@ void turn (char dir) {
             // Turn left with giroscope
             Serial.println("Esquerda");
             set_motors(128+45, 128+45);
-            posicao_atual = mpu.getAngleZ();
             while( posicao_atual < posicao_inicial + 85 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
@@ -609,10 +656,10 @@ void turn (char dir) {
             // Turn left with infra-red line sensors
             // set_motors(128+35, 128+35);
             // Serial.println(mpu.getAngleZ());
-            // while( sensors[2] > THRESHOLD_VALUE ){
+            // while( sensors[2] > LINE_THRESHOLD_VALUE ){
             //   read_line();
             // }
-            // while(sensors[2] < THRESHOLD_VALUE){
+            // while(sensors[2] < LINE_THRESHOLD_VALUE){
             //   read_line();
             // }
             // set_motors(128, 128);
@@ -622,7 +669,6 @@ void turn (char dir) {
             // Turn right with giroscope
             set_motors(128-45, 128-45);
             Serial.println("Direita");
-            posicao_atual = mpu.getAngleZ();
             while( posicao_atual > posicao_inicial - 85 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
@@ -635,10 +681,10 @@ void turn (char dir) {
 
             // // Turn right with line sensors
             // set_motors(128-35, 128-35);
-            // while( sensors[2] > THRESHOLD_VALUE ){
+            // while( sensors[2] > LINE_THRESHOLD_VALUE ){
             //   read_line();
             // }
-            // while(sensors[2] < THRESHOLD_VALUE){
+            // while(sensors[2] < LINE_THRESHOLD_VALUE){
             //   read_line();
             // }
             // set_motors(128, 128);
@@ -647,7 +693,6 @@ void turn (char dir) {
           // Turn around with giroscope
             Serial.println("Back");
             set_motors(128+45, 128+45);
-            posicao_atual = mpu.getAngleZ();
             while( posicao_atual < posicao_inicial + 175 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
@@ -659,10 +704,10 @@ void turn (char dir) {
 
             // // Turn around.
             // set_motors(128+35, 128+35);
-            // while( sensors[2] > THRESHOLD_VALUE ){
+            // while( sensors[2] > LINE_THRESHOLD_VALUE ){
             //   read_line();
             // }
-            // while(sensors[2] < THRESHOLD_VALUE){
+            // while(sensors[2] < LINE_THRESHOLD_VALUE){
             //   read_line();
             // }
             // set_motors(128, 128);
@@ -784,7 +829,7 @@ void calibrate_line_sensors(){
     float posicao_atual;
 
     // Turn left with giroscope
-    set_motors(128+35, 128+35);
+    set_motors(128+45, 128+45);
     while( posicao_atual < posicao_inicial + 350 ){
         mpu.update();
         posicao_atual = mpu.getAngleZ();
@@ -843,11 +888,11 @@ void calibrate_line_sensors(){
 
 void mapping_sensors_values_to_calibrated_values(){
     // apply the calibration to the sensor reading
-    sensors[0] = map(sensors[0], sensors_min[0], sensors_max[0], 0, 255);
-    sensors[1] = map(sensors[1], sensors_min[1], sensors_max[1], 0, 255);
-    sensors[2] = map(sensors[2], sensors_min[2], sensors_max[2], 0, 255);
-    sensors[3] = map(sensors[3], sensors_min[3], sensors_max[3], 0, 255);
-    sensors[4] = map(sensors[4], sensors_min[4], sensors_max[4], 0, 255);
+    sensors[0] = map(sensors[0], sensors_min[0], sensors_max[0], 0, 2500);
+    sensors[1] = map(sensors[1], sensors_min[1], sensors_max[1], 0, 2500);
+    sensors[2] = map(sensors[2], sensors_min[2], sensors_max[2], 0, 2500);
+    sensors[3] = map(sensors[3], sensors_min[3], sensors_max[3], 0, 2500);
+    sensors[4] = map(sensors[4], sensors_min[4], sensors_max[4], 0, 2500);
 
     Serial.print(sensors[0]);
     Serial.print(" ");
@@ -863,3 +908,150 @@ void mapping_sensors_values_to_calibrated_values(){
 
     Serial.println(sensors[4]);
 }
+
+
+
+
+
+// ============================= LCD COMMANDS =============================
+
+// void setup() {
+//   // put your setup code here, to run once:
+//   pinMode(RS, OUTPUT);
+//   pinMode(EN_TRIG, OUTPUT);
+  
+//   for (int i = 0; i < DATA_SIZE; i++){
+//     pinMode(DATA[i], OUTPUT);
+//   }
+  
+//   Serial.begin(9600);
+//   //Serial.begin(115200); //ESP32
+//   initLCD();
+  
+//   // Always good to clear and return home
+//   write8bits(CLEAR_DISPLAY);
+//   write8bits(RETURN_HOME);
+//   delay(2); // 1.52ms delay needed for the Return Home command
+//   writeData("Thiago Lahass");
+//   write8bits(ENTER);
+//   writeData("Eng Computacao");
+// }
+
+// void loop() {
+//   for(int i = 0; i < 16; i++){
+//     write8bits(DISPLAY_SHIFT_LEFT);
+//   }
+  
+//   for(int i = 0; i < 32; i++){
+//     write8bits(DISPLAY_SHIFT_RIGHT);
+//   	delay(100);
+//   }
+  
+//   for(int i = 0; i < 16; i++){
+//     write8bits(DISPLAY_SHIFT_LEFT);
+//   }
+// }
+
+/* ------------------------------------------------------
+	Pulses the Enable pin to send data to the display
+*/
+void pulseEnable(){
+  // Making sure the pin is LOW at first
+  digitalWrite(EN_TRIG, LOW);
+  delayMicroseconds(1);
+  
+  // Pulse the Enable pin
+  digitalWrite(EN_TRIG, HIGH);
+  delayMicroseconds(1);
+  digitalWrite(EN_TRIG, LOW);
+  delayMicroseconds(100);
+}
+
+/* ------------------------------------------------------
+	Initializes the display as in Figure 24 of the 
+    HD44780U datasheet requests
+*/
+void initLCD(){
+  // Waiting at first
+  delay(40);
+  
+  //Serial.println("Function set 4 bits 0b0010.");
+  digitalWrite(RS, LOW);
+  
+  // Function set the interface with 4 bits
+  write4bits(FUNCTION_SET >> 4);
+  delayMicroseconds(4500); // A little more than 4.1 ms
+  
+  // Now, we set:
+  // - Number of lines in the display (2 lines: 16x2)
+  // - Size of the pixel matrix (5x8)
+  // RS remains 0 (only is 1 when writing)
+  //Serial.println("Function set 4 bits 0b0010 1000.");
+  write8bits(FUNCTION_SET | DISPLAY_FUNCTION);
+  
+  // Display OFF
+  //Serial.println("Display ON/OFF control 0b0000 1100.");
+  write8bits(DISPLAY_CONTROL); 
+  
+  // Entry mode set
+  //Serial.println("Entry mode set 0b0000 0110.");
+  write8bits(ENTRY_MODE_SET); 
+  
+  // Clearing and returning home
+  write8bits(CLEAR_DISPLAY);
+  write8bits(RETURN_HOME);
+  delay(2); // 1.52ms delay needed for the Return Home command
+  
+  // Now you're free to use the display
+}
+
+/* ------------------------------------------------------
+	Actually sends the commands to the display
+*/
+void write4bits(int value){
+  for(int i = 0; i < 4; i++){
+    // Only the value corresponding to the bit of interest
+  	digitalWrite(DATA[i], (value>>(3-i)) & 0x1);
+  }
+  pulseEnable();
+}
+
+/* ------------------------------------------------------
+	Writes first half of data, than second half
+*/
+void write8bits(int value){
+  // Sends first half of the data (upper part):
+  write4bits(value>>4);
+  // Sends last half of the data (lower part):
+  write4bits(value);
+}
+
+
+void display_sensors_values_on_LCD(){
+  write8bits(CLEAR_DISPLAY);
+  write8bits(RETURN_HOME);
+  delay(2);                                     // 1.52ms delay needed for the Return Home command
+
+  char line1[25], line2[25];
+  line1[0] = '\0';
+  line2[0] = '\0';
+  dtostrf(average_distance, 6, 2, line1);
+  strcat(line1, " cm");
+
+  for (int i = 1; i < NUM_SENSORS - 1; ++i) {
+    char sensorValueStr[5];
+    dtostrf(sensors[i], 4, 0, sensorValueStr);    // Converts the sensor value to a string
+
+    strcat(line2, sensorValueStr);
+    strcat(line2, " ");
+  }
+
+  if (strlen(line2) > 0) {
+    line2[strlen(line2) - 1] = '\0';
+  }
+
+  writeData(line1);                               // display the distance captured by the ultrasonic sensor in [cm]
+  write8bits(ENTER);
+  writeData(line2);                               // display the values captured by the infra-red line sensors in the range 0 - 4096
+}
+
