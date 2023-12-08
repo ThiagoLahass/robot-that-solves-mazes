@@ -86,8 +86,7 @@ void display_sensors_values_on_LCD();
 #define     BASE_SPEED  170
 
 #define     LINE_THRESHOLD_VALUE 500      // line reading cut-off value
-#define     WALL_THRESHOLD_VALUE 15       // wall reading cut-off value
-
+#define     WALL_THRESHOLD_VALUE 30       // wall reading cut-off value
 
 
 #define     NUM_SENSORS 5
@@ -101,7 +100,6 @@ float Kp = 0.008, Ki = 0, Kd = 0; // values of the PID constants values
 char path[100] = "";
 
 unsigned char path_length = 0; // the length of the path
-
 
 
 float moving_average(float *buffer, int tamanho);
@@ -262,6 +260,17 @@ void loop() {
   unsigned char found_straight  = 0;
   unsigned char found_right     = 0;
 
+  // Servo facing forward
+  servo.write(90);
+  delay(1000);
+  average_distance = read_ultrasonic_sensor();
+  display_sensors_values_on_LCD();
+  
+  if(average_distance > WALL_THRESHOLD_VALUE){
+    found_straight = 1;
+    Serial.println("found_straight");
+  }
+
   // Servo facing left
   servo.write(180);
 	delay(1000);
@@ -271,29 +280,17 @@ void loop() {
   if( average_distance > WALL_THRESHOLD_VALUE ){  // If the left is free, we can take it immediately
     found_left = 1;
     Serial.println("found_left");
-  }
+  } 
   else{
-    // Servo facing forward
-    servo.write(90);
+    // Servo facing right
+    servo.write(0);
     delay(1000);
     average_distance = read_ultrasonic_sensor();
     display_sensors_values_on_LCD();
-    
-    if(average_distance > WALL_THRESHOLD_VALUE){
-      found_straight = 1;
-      Serial.println("found_straight");
-    }
-    else{
-      // Servo facing right
-      servo.write(0);
-      delay(1000);
-      average_distance = read_ultrasonic_sensor();
-      display_sensors_values_on_LCD();
 
-      if(average_distance > WALL_THRESHOLD_VALUE){
-        found_right = 1;
-        Serial.println("found_right");
-      }
+    if(average_distance > WALL_THRESHOLD_VALUE){
+      found_right = 1;
+      Serial.println("found_right");
     }
   }
 
@@ -667,8 +664,8 @@ void turn (char dir) {
 
         case 'R':
             // Turn right with giroscope
-            set_motors(128-45, 128-45);
             Serial.println("Direita");
+            set_motors(128-45, 128-45);
             while( posicao_atual > posicao_inicial - 85 ){
               mpu.update();
               posicao_atual = mpu.getAngleZ();
@@ -714,6 +711,7 @@ void turn (char dir) {
             // break;
         case 'S':
             // Don't do anything!
+            Serial.println("Straight");
             break;
     }
 }
