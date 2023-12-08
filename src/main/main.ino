@@ -257,6 +257,8 @@ void loop() {
   //================== FOLLOWING THE MAZE ACCORDING TO THE WALLS ==================
   //================================ READ THE WALLS ===============================
   unsigned char found_left      = 0;
+
+
   unsigned char found_straight  = 0;
   unsigned char found_right     = 0;
 
