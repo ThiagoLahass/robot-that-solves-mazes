@@ -6,6 +6,6 @@ Apply concepts acquired throughout the course such as pulse width modulation (PW
   <img src="https://github.com/ThiagoLahass/robot-that-solves-mazes/blob/b2964947acf20478596f60ea1d3436659ea97d3c/images/robotic2.jpeg" style="width: 48%; height: 300%; object-fit: cover;" />
 </div>
 
-## Demonstração em Vídeo
+## Video Demonstration
 
 [![Watch the Demo Video](images\images\Robot_solving_the_maze.png)](https://youtu.be/FQmdxKDgYJk)
